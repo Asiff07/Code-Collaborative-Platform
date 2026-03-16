@@ -167,6 +167,9 @@ const EditorPage = () => {
 
       } catch (err) {
         console.error("Camera access denied:", err);
+        if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
+          alert("WebRTC (Video Calling) requires HTTPS to work on non-localhost addresses (like your mobile phone). Use a tool like ngrok or configure a local SSL certificate.");
+        }
       }
     };
 
