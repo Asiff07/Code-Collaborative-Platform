@@ -1,4 +1,5 @@
-const { getOrCreateRoom, updateRoomCode, updateRoomLanguage } = require("../services/roomService");
+const { getWorkspaceByRoomId, updateWorkspaceCode, updateWorkspaceLanguage } = require("../services/workspaceService");
+const User = require("../models/User");
 
 // In-memory room state
 // rooms[roomId] = { users: { [socketId]: { username, color } } }
@@ -44,20 +45,33 @@ const setupSocketHandler = (io) => {
       // Initialize room state if needed
       if (!rooms[cleanRoom]) rooms[cleanRoom] = { users: {} };
 
+      // Fetch user credits to display alongside username
+      let credits = 10;
+      try {
+        const userDoc = await User.findOne({ name: cleanUser });
+        if (userDoc) credits = userDoc.credits;
+      } catch(e) {}
+
       const color = getColorForSocket(cleanRoom);
-      rooms[cleanRoom].users[socket.id] = { username: cleanUser, color };
+      rooms[cleanRoom].users[socket.id] = { username: cleanUser, color, credits };
 
       // Store roomId on the socket for disconnect cleanup
       socket.currentRoom = cleanRoom;
       socket.username = cleanUser;
+      socket.credits = credits;
 
       // Fetch persisted code and sync to the joining user
       try {
-        const room = await getOrCreateRoom(cleanRoom);
-        socket.emit("sync-code", {
-          code: room.codeContent,
-          language: room.language,
-        });
+        const workspace = await getWorkspaceByRoomId(cleanRoom);
+        if (workspace) {
+          socket.emit("sync-code", {
+            code: workspace.codeContent,
+            language: workspace.language,
+          });
+        } else {
+          socket.emit("error", { message: "Workspace not found." });
+          return;
+        }
       } catch (err) {
         console.error("sync-code fetch error:", err.message);
         socket.emit("sync-code", { code: "", language: "javascript" });
@@ -66,7 +80,7 @@ const setupSocketHandler = (io) => {
       // Broadcast updated user list to everyone in the room
       io.to(cleanRoom).emit("user-joined", getUserList(cleanRoom));
 
-      console.log(`${cleanUser} joined room: ${cleanRoom}`);
+      console.log(`${cleanUser} joined room: ${cleanRoom} with ${credits} credits`);
     });
 
     socket.on("code-change", ({ roomId, code }) => {
@@ -80,7 +94,7 @@ const setupSocketHandler = (io) => {
       clearTimeout(saveTimers[cleanRoom]);
       saveTimers[cleanRoom] = setTimeout(async () => {
         try {
-          await updateRoomCode(cleanRoom, code);
+          await updateWorkspaceCode(cleanRoom, code);
         } catch (err) {
           console.error("Autosave error:", err.message);
         }
@@ -117,7 +131,7 @@ const setupSocketHandler = (io) => {
       // Broadcast to everyone in the room including sender
       io.to(cleanRoom).emit("language-update", language.trim());
       // Persist language choice
-      updateRoomLanguage(cleanRoom, language.trim()).catch(console.error);
+      updateWorkspaceLanguage(cleanRoom, language.trim()).catch(console.error);
     });
 
     socket.on("disconnect", () => {
@@ -130,12 +144,55 @@ const setupSocketHandler = (io) => {
           clearTimeout(saveTimers[roomId]);
         } else {
           io.to(roomId).emit("user-left", getUserList(roomId));
+          io.to(roomId).emit("user-left-video", socket.id);
         }
 
         console.log(`${socket.username || socket.id} left room: ${roomId}`);
       }
       console.log(`Socket disconnected: ${socket.id}`);
     });
+    
+    // --- WebRTC Video Call Signaling ---
+    socket.on("sending-signal", (payload) => {
+      // payload: { userToSignal, callerID, signal, callerUsername }
+      io.to(payload.userToSignal).emit("user-joined-video", {
+        signal: payload.signal,
+        callerID: payload.callerID,
+        callerUsername: payload.callerUsername,
+      });
+    });
+
+    socket.on("returning-signal", (payload) => {
+      // payload: { callerID, signal }
+      io.to(payload.callerID).emit("receiving-returned-signal", {
+        signal: payload.signal,
+        id: socket.id,
+      });
+    });
+
+    socket.on("join-video-group", ({ roomId }) => {
+      if (!roomId || !rooms[roomId]) return;
+      
+      const usersInRoom = Object.keys(rooms[roomId].users).map(id => ({
+        socketId: id,
+        username: rooms[roomId].users[id].username
+      }));
+
+      socket.emit("all-users-video", usersInRoom);
+    });
+
+    // Add an endpoint for credits refreshing
+    socket.on("refresh-credits", async ({ roomId, username }) => {
+      if (!roomId || !username || !rooms[roomId]) return;
+      try {
+        const userDoc = await User.findOne({ name: username });
+        if (userDoc && rooms[roomId].users[socket.id]) {
+          rooms[roomId].users[socket.id].credits = userDoc.credits;
+          io.to(roomId).emit("user-joined", getUserList(roomId)); // Broadcast updated users list
+        }
+      } catch(e) {}
+    });
+
   });
 };
 

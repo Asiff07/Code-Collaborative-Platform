@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState } from "react";
 import Editor from "@monaco-editor/react";
+import AiActionPanel from "./AiActionPanel";
 
 const CodeEditor = ({
   socket,
@@ -7,6 +8,8 @@ const CodeEditor = ({
   initialCode,
   initialLanguage,
   currentUser,
+  onUpdateCredits,
+  activePanel
 }) => {
   const [language, setLanguage] = useState(initialLanguage || "javascript");
   const [isEditorReady, setIsEditorReady] = useState(false);
@@ -14,6 +17,7 @@ const CodeEditor = ({
   const monacoRef = useRef(null);
   const isRemoteChange = useRef(false);
   const cursorDecorationsRef = useRef({});
+  const [selectedCode, setSelectedCode] = useState("");
 
   useEffect(() => {
     setLanguage(initialLanguage);
@@ -35,6 +39,14 @@ const CodeEditor = ({
         lineNumber: e.position.lineNumber,
         column: e.position.column,
       });
+    });
+
+    editor.onDidChangeCursorSelection((e) => {
+      const selection = e.selection;
+      const model = editor.getModel();
+      if (!model) return;
+      const text = model.getValueInRange(selection);
+      setSelectedCode(text);
     });
 
     setIsEditorReady(true);
@@ -145,8 +157,9 @@ const CodeEditor = ({
   }, [socket, isEditorReady]);
 
   return (
-    <div className="flex flex-col h-full bg-transparent">
-      <div className="h-14 bg-white/[0.02] border-b border-white/[0.05] flex items-center justify-between px-6 backdrop-blur-sm z-10 relative">
+    <div className="flex h-full w-full bg-transparent overflow-hidden">
+      <div className="flex flex-col flex-1 h-full min-w-0">
+        <div className="h-14 bg-white/[0.02] border-b border-white/[0.05] flex items-center justify-between px-6 backdrop-blur-sm z-10 relative flex-shrink-0">
         <div className="flex gap-4 items-center">
           <div className="flex gap-2 mr-2">
             <div className="w-3 h-3 rounded-full bg-[#FF5F56] shadow-[0_0_8px_rgba(255,95,86,0.5)]"></div>
@@ -216,6 +229,19 @@ const CodeEditor = ({
           }
         />
       </div>
+      </div>
+      
+      {/* AI Assistant Panel */}
+      {activePanel === "ai" && (
+        <AiActionPanel 
+          socket={socket}
+          roomId={roomId}
+          currentUser={currentUser}
+          selectedCode={selectedCode} 
+          language={language}
+          onUpdateCredits={onUpdateCredits}
+        />
+      )}
     </div>
   );
 };

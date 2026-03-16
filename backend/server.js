@@ -5,7 +5,9 @@ const { Server } = require("socket.io");
 const cors = require("cors");
 
 const connectDB = require("./config/db");
-const roomRoutes = require("./routes/roomRoutes");
+const workspaceRoutes = require("./routes/workspaceRoutes");
+const authRoutes = require("./routes/authRoutes");
+const aiRoutes = require("./routes/aiRoutes");
 const setupSocketHandler = require("./sockets/socketHandler");
 
 const app = express();
@@ -21,7 +23,9 @@ const io = new Server(server, {
 app.use(cors({ origin: process.env.CLIENT_URL || "http://localhost:5173" }));
 app.use(express.json());
 
-app.use("/api/rooms", roomRoutes);
+app.use("/api/workspaces", workspaceRoutes);
+app.use("/api/auth", authRoutes);
+app.use("/api/ai", aiRoutes);
 
 app.get("/health", (req, res) => res.json({ status: "ok" }));
 

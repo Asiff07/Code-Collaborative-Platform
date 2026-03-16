@@ -5,7 +5,7 @@ const getInitials = (name) => {
   return name.substring(0, 2).toUpperCase();
 };
 
-const UserList = ({ users, copyRoomId }) => {
+const UserList = ({ users, copyRoomId, currentUser }) => {
   const navigate = useNavigate();
 
   const handleLeave = () => {
@@ -41,16 +41,30 @@ const UserList = ({ users, copyRoomId }) => {
       
       <div className="flex-1 overflow-y-auto scrollbar-thin px-4 pb-4 space-y-2.5">
         {users.map((user, index) => (
-          <div key={index} className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/[0.02] border border-white/[0.03] hover:bg-white/[0.05] transition-colors group">
-            <div 
-              className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold text-slate-900 shadow-sm ring-2 ring-white/10"
-              style={{ backgroundColor: user.color, boxShadow: `0 0 12px ${user.color}40` }}
-            >
-              {getInitials(user.username)}
+          <div key={index} className={`flex items-center justify-between px-3 py-2.5 rounded-xl border transition-all group ${user.username === currentUser ? 'bg-indigo-500/[0.08] border-indigo-500/40 shadow-[0_0_15px_rgba(99,102,241,0.1)]' : 'bg-white/[0.02] border-white/[0.03] hover:bg-white/[0.05]'}`}>
+            <div className="flex items-center gap-3 min-w-0">
+              <div 
+                className="w-8 h-8 rounded-full flex shrink-0 items-center justify-center text-[11px] font-bold text-slate-900 shadow-sm ring-2 ring-white/10"
+                style={{ backgroundColor: user.color, boxShadow: `0 0 12px ${user.color}40` }}
+              >
+                {getInitials(user.username)}
+              </div>
+              <div className="flex flex-col">
+                <span className={`truncate text-sm font-medium transition-colors ${user.username === currentUser ? 'text-indigo-200' : 'text-slate-200 group-hover:text-white'}`}>
+                  {user.username}
+                </span>
+                {user.username === currentUser && (
+                  <span className="text-[9px] text-indigo-400 font-bold uppercase tracking-widest mt-0.5">You</span>
+                )}
+              </div>
             </div>
-            <span className="truncate text-slate-200 text-sm font-medium pointer-events-none group-hover:text-white transition-colors">
-              {user.username}
-            </span>
+            
+            {user.credits !== undefined && (
+              <div className="shrink-0 flex items-center gap-1.5 bg-indigo-500/10 border border-indigo-500/20 px-2 py-1 rounded-md ml-2" title={`${user.credits} AI credits remaining`}>
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-400"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+                <span className="text-[10px] font-bold text-indigo-300 font-mono">{user.credits}</span>
+              </div>
+            )}
           </div>
         ))}
       </div>

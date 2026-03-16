@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 
-const ChatPanel = ({ messages, onSendMessage, currentUser }) => {
+const ChatPanel = ({ messages, onSendMessage, currentUser, onClose }) => {
   const [inputText, setInputText] = useState("");
   const scrollContainerRef = useRef(null);
 
@@ -40,7 +40,15 @@ const ChatPanel = ({ messages, onSendMessage, currentUser }) => {
           </div>
           <h2 className="text-slate-200 text-sm font-bold tracking-wide">Team Chat</h2>
         </div>
-        <span className="text-[10px] font-semibold text-slate-500 bg-white/[0.05] px-2 py-1 rounded-md">{messages.length}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-semibold text-slate-500 bg-white/[0.05] px-2 py-1 rounded-md">{messages.length}</span>
+          <button 
+            onClick={onClose}
+            className="p-1.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+          >
+             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
       </div>
 
       <div 
