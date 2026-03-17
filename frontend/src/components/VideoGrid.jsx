@@ -11,16 +11,19 @@ const RemoteVideo = ({ peer, username }) => {
     const handleStream = (stream) => {
       if (ref.current) {
         ref.current.srcObject = stream;
+        // Some browsers need an explicit play() call after srcObject is set
+        ref.current.play().catch(() => {});
         setHasStream(true);
       }
     };
 
-    // simple-peer fires "stream" when the remote track arrives
+    // Register stream listener
     peer.on("stream", handleStream);
 
-    // In case the stream was already set before this component mounted
-    if (peer._remoteStreams && peer._remoteStreams.length > 0) {
-      handleStream(peer._remoteStreams[0]);
+    // Handle case where stream already arrived before component mounted
+    // simple-peer exposes .streams (array) as a public property
+    if (peer.streams && peer.streams.length > 0) {
+      handleStream(peer.streams[0]);
     }
 
     return () => {

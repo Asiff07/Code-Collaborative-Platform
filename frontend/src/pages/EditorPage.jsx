@@ -115,17 +115,41 @@ const EditorPage = () => {
   }, [roomId, username, navigate, socket]);
 
   // ─── WebRTC ─────────────────────────────────────────────────────────────────
+  // Free TURN servers (Open Relay Project) — required for cross-network / mobile
+  const ICE_SERVERS = [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+    { urls: "stun:stun2.l.google.com:19302" },
+    { urls: "stun:stun3.l.google.com:19302" },
+    { urls: "stun:stun4.l.google.com:19302" },
+    {
+      urls: "turn:openrelay.metered.ca:80",
+      username: "openrelayproject",
+      credential: "openrelayproject",
+    },
+    {
+      urls: "turn:openrelay.metered.ca:443",
+      username: "openrelayproject",
+      credential: "openrelayproject",
+    },
+    {
+      urls: "turn:openrelay.metered.ca:443?transport=tcp",
+      username: "openrelayproject",
+      credential: "openrelayproject",
+    },
+    {
+      urls: "turn:openrelay.metered.ca:80?transport=tcp",
+      username: "openrelayproject",
+      credential: "openrelayproject",
+    },
+  ];
+
   const createPeer = useCallback((userToSignal, callerID, stream) => {
     const peer = new Peer({
       initiator: true,
-      trickle: true, // ✅ stream ICE candidates immediately
+      trickle: true,
       stream,
-      config: {
-        iceServers: [
-          { urls: "stun:stun.l.google.com:19302" },
-          { urls: "stun:stun1.l.google.com:19302" },
-        ],
-      },
+      config: { iceServers: ICE_SERVERS },
     });
 
     peer.on("signal", (signal) => {
@@ -150,14 +174,9 @@ const EditorPage = () => {
   const addPeer = useCallback((incomingSignal, callerID, stream, callerUsername) => {
     const peer = new Peer({
       initiator: false,
-      trickle: true, // ✅ stream ICE candidates immediately
+      trickle: true,
       stream,
-      config: {
-        iceServers: [
-          { urls: "stun:stun.l.google.com:19302" },
-          { urls: "stun:stun1.l.google.com:19302" },
-        ],
-      },
+      config: { iceServers: ICE_SERVERS },
     });
 
     peer.on("signal", (signal) => {
