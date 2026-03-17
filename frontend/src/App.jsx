@@ -5,6 +5,7 @@ import Dashboard from "./pages/Dashboard";
 import EditorPage from "./pages/EditorPage";
 import LoginPage from "./pages/LoginPage";
 import SignupPage from "./pages/SignupPage";
+import UpgradePage from "./pages/UpgradePage";
 
 const ProtectedRoute = ({ children }) => {
   const { token, loading } = useContext(AuthContext);
@@ -30,6 +31,14 @@ const App = () => {
             element={
               <ProtectedRoute>
                 <Dashboard />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/upgrade" 
+            element={
+              <ProtectedRoute>
+                <UpgradePage />
               </ProtectedRoute>
             } 
           />

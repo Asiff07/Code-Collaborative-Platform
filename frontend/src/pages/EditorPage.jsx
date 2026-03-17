@@ -8,6 +8,7 @@ import UserList from "../components/UserList";
 import CodeEditor from "../components/CodeEditor";
 import ChatPanel from "../components/ChatPanel";
 import VideoGrid from "../components/VideoGrid";
+import CreditPlansPanel from "../components/CreditPlansPanel";
 
 const EditorPage = () => {
   const { roomId } = useParams();
@@ -418,6 +419,13 @@ const EditorPage = () => {
           />
         )}
 
+        {activePanel === "credits" && (
+          <CreditPlansPanel
+            onClose={() => setActivePanel(null)}
+            currentUserCredits={user?.credits}
+          />
+        )}
+
         {/* Vertical Toolbar */}
         <div className="w-14 h-full bg-white/[0.02] backdrop-blur-[24px] border-l border-white/[0.05] flex flex-col items-center py-6 gap-6 shrink-0 z-30">
           <button
@@ -452,6 +460,15 @@ const EditorPage = () => {
             {callStarted && !isCallOpen && (
               <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-green-400 animate-pulse" />
             )}
+          </button>
+
+          {/* Credits Panel Toggle */}
+          <button
+            onClick={() => setActivePanel(activePanel === "credits" ? null : "credits")}
+            className={`p-3 rounded-xl transition-all ${activePanel === "credits" ? "bg-yellow-500 text-white shadow-[0_0_15px_rgba(234,179,8,0.4)]" : "text-slate-400 hover:text-white hover:bg-white/[0.05]"}`}
+            title="AI Credits"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
           </button>
         </div>
       </div>

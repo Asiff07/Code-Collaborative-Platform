@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { requestAiReview, requestAiExplain, requestAiAssist } from "../services/api";
+import { useNavigate } from "react-router-dom";
 
 const AiActionPanel = ({ socket, roomId, currentUser, selectedCode, language, onUpdateCredits, onAiSuggestion }) => {
   const [loading, setLoading] = useState(false);
@@ -8,6 +9,7 @@ const AiActionPanel = ({ socket, roomId, currentUser, selectedCode, language, on
   const [prompt, setPrompt] = useState("");
   const [mode, setMode] = useState(null); // 'review', 'explain', 'assist'
   const [error, setError] = useState("");
+  const navigate = useNavigate();
 
   const handleAiAction = async (actionType) => {
     if (!selectedCode) {
@@ -35,7 +37,6 @@ const AiActionPanel = ({ socket, roomId, currentUser, selectedCode, language, on
         data = await requestAiAssist(prompt, selectedCode, language);
       }
 
-      setResult(data.result);
       setResult(data.result);
       if (data.credits !== undefined) {
         if (onUpdateCredits) onUpdateCredits(data.credits);
@@ -147,9 +148,31 @@ const AiActionPanel = ({ socket, roomId, currentUser, selectedCode, language, on
             )}
 
             {error && (
-              <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-4 rounded-xl text-xs leading-relaxed flex items-start gap-3">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-                {error}
+              <div className="animate-[fadeIn_0.3s_ease-out]">
+                {error === "AI credit limit reached" || error.includes("credit limit") ? (
+                  <div className="bg-orange-500/10 border border-orange-500/20 p-5 rounded-xl flex flex-col items-center text-center gap-3">
+                    <div className="w-12 h-12 rounded-full bg-orange-500/20 flex items-center justify-center text-orange-400 mb-1">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                    </div>
+                    <div>
+                      <h3 className="text-orange-400 font-bold text-base mb-1">0 Credits Remaining</h3>
+                      <p className="text-orange-200/70 text-xs leading-relaxed">
+                        You have reached the 5 request limit on the Free plan. Upgrade your account to continue using the Gemini AI Assistant.
+                      </p>
+                    </div>
+                    <button 
+                      onClick={() => navigate("/upgrade")}
+                      className="w-full mt-2 bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold py-2.5 rounded-lg transition-colors shadow-[0_0_15px_rgba(249,115,22,0.3)]"
+                    >
+                      Upgrade Plan
+                    </button>
+                  </div>
+                ) : (
+                  <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-4 rounded-xl text-xs leading-relaxed flex items-start gap-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                    {error}
+                  </div>
+                )}
               </div>
             )}
 

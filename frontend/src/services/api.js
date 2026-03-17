@@ -70,4 +70,10 @@ export const requestAiAssist = async (prompt, code, language) => {
   return data; // { result, credits }
 };
 
+/** Requests Stripe Checkout Session Setup */
+export const requestStripeCheckout = async (planId) => {
+  const { data } = await api.post("/api/stripe/create-checkout-session", { planId });
+  return data; // { url }
+};
+
 export default api;

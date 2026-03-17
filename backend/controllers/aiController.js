@@ -7,7 +7,9 @@ const checkCredit = async (userId) => {
   const user = await User.findById(userId);
   if (!user) throw new Error("User not found");
   if (user.credits <= 0) {
-    throw new Error("Insufficient credits. Please upgrade or wait for a refill.");
+    const error = new Error("AI credit limit reached");
+    error.statusCode = 403;
+    throw error;
   }
   return user;
 };
@@ -37,7 +39,7 @@ const reviewCode = async (req, res) => {
   } catch (error) {
     console.error("AI Review error:", error);
     fs.appendFileSync("debug-error.log", `\n[REVIEW] ${error.message}\n${error.stack}\n`);
-    res.status(error.message.includes("Insufficient") ? 403 : 500).json({ message: error.message || "Failed to generate AI review" });
+    res.status(error.statusCode || 500).json({ message: error.message || "Failed to generate AI review" });
   }
 };
 
@@ -54,7 +56,7 @@ const explainCode = async (req, res) => {
   } catch (error) {
     console.error("AI Explain error:", error);
     fs.appendFileSync("debug-error.log", `\n[EXPLAIN] ${error.message}\n${error.stack}\n`);
-    res.status(error.message.includes("Insufficient") ? 403 : 500).json({ message: error.message || "Failed to generate AI explanation" });
+    res.status(error.statusCode || 500).json({ message: error.message || "Failed to generate AI explanation" });
   }
 };
 
@@ -72,7 +74,7 @@ const assistCode = async (req, res) => {
   } catch (error) {
     console.error("AI Assist error:", error);
     fs.appendFileSync("debug-error.log", `\n[ASSIST] ${error.message}\n${error.stack}\n`);
-    res.status(error.message.includes("Insufficient") ? 403 : 500).json({ message: error.message || "Failed to generate AI assistance" });
+    res.status(error.statusCode || 500).json({ message: error.message || "Failed to generate AI assistance" });
   }
 };
 
