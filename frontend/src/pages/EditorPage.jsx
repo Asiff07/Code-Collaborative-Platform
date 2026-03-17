@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import Peer from "simple-peer";
 import { useParams, useLocation, useNavigate } from "react-router-dom";
 import useSocket from "../hooks/useSocket";
@@ -13,25 +13,16 @@ const EditorPage = () => {
   const { roomId } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, login } = React.useContext(AuthContext); // Can use login or a dedicated sync method, but we usually just update local storage and state.
+  const { user } = React.useContext(AuthContext);
 
-  // We need a helper to safely update just the credits in AuthContext, 
-  // but to keep it simple without changing Context drastically, we can trick it or reload the user.
-  // Actually, since `user` is state in AuthContext, we can create an update function there, 
-  // or just let a hard refresh sync it on the dashboard. Let's make an updateUser function if we can,
-  // or we'll manage it silently and dashboard will fetch it eventually. 
-  // Wait, the API returns it, let's pass it to CodeEditor.
   const handleCreditUpdate = (newCredits) => {
     if (user) {
       const updatedUser = { ...user, credits: newCredits };
-      // A small hack: we store it in localStorage so Dashboard picks it up on navigation
       localStorage.setItem("user", JSON.stringify(updatedUser));
-      // Ideally AuthContext should export setUser.
     }
   };
 
   const username = location.state?.username;
-
   const { socket } = useSocket();
 
   const [users, setUsers] = useState([]);
@@ -42,15 +33,44 @@ const EditorPage = () => {
   const [activePanel, setActivePanel] = useState(null); // 'chat', 'ai', or null
 
   // WebRTC State
-  const [peers, setPeers] = useState([]);
+  const [peers, setPeers] = useState([]); // [{ peerID, peer, username }]
   const [localStream, setLocalStream] = useState(null);
   const [isMicOn, setIsMicOn] = useState(true);
   const [isCamOn, setIsCamOn] = useState(true);
   const [isSharingScreen, setIsSharingScreen] = useState(false);
+  const [isCallOpen, setIsCallOpen] = useState(false);
+  const [callStarted, setCallStarted] = useState(false);
 
-  const peersRef = useRef([]);
+  // Use a Map keyed by peerID to avoid duplicates and race conditions
+  const peersMap = useRef(new Map()); // peerID -> { peer, username }
+  const localStreamRef = useRef(null); // always holds the latest localStream
   const screenTrackRef = useRef(null);
 
+  // Keep localStreamRef in sync
+  useEffect(() => {
+    localStreamRef.current = localStream;
+  }, [localStream]);
+
+  // Helper: sync peersMap → React state
+  const syncPeersState = useCallback(() => {
+    const arr = [];
+    peersMap.current.forEach((val, peerID) => {
+      arr.push({ peerID, peer: val.peer, username: val.username });
+    });
+    setPeers([...arr]);
+  }, []);
+
+  // Helper: destroy and remove a peer by ID
+  const removePeer = useCallback((peerID) => {
+    const existing = peersMap.current.get(peerID);
+    if (existing) {
+      try { existing.peer.destroy(); } catch (_) {}
+      peersMap.current.delete(peerID);
+      syncPeersState();
+    }
+  }, [syncPeersState]);
+
+  // ─── Room Join ──────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!username) {
       console.warn("No username found, redirecting to home");
@@ -69,14 +89,8 @@ const EditorPage = () => {
         setIsReady(true);
       });
 
-      s.on("user-joined", (updatedUsers) => {
-        setUsers(updatedUsers);
-      });
-
-      s.on("user-left", (updatedUsers) => {
-        setUsers(updatedUsers);
-        // Handle video peer cleanup will be handled in a separate useEffect for granularity
-      });
+      s.on("user-joined", (updatedUsers) => setUsers(updatedUsers));
+      s.on("user-left", (updatedUsers) => setUsers(updatedUsers));
 
       s.on("receive-message", (msg) => {
         setMessages((prev) => [...prev, msg]);
@@ -100,101 +114,22 @@ const EditorPage = () => {
     };
   }, [roomId, username, navigate, socket]);
 
-  // Clean up media tracks on component unmount
-  useEffect(() => {
-    return () => {
-      if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-      }
-    };
-  }, [localStream]);
-
-  // WebRTC Implementation
-  useEffect(() => {
-    if (!isReady || !socket.current) return;
-
-    const initMedia = async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        setLocalStream(stream);
-
-        socket.current.on("user-joined-video", (payload) => {
-          const peer = addPeer(payload.signal, payload.callerID, stream, payload.callerUsername);
-          peersRef.current.push({
-            peerID: payload.callerID,
-            peer,
-            username: payload.callerUsername
-          });
-        });
-
-        socket.current.on("receiving-returned-signal", (payload) => {
-          const item = peersRef.current.find((p) => p.peerID === payload.id);
-          if (item) {
-            item.peer.signal(payload.signal);
-          }
-        });
-
-        // Inform existing users that we are ready for video
-        socket.current.emit("join-video-group", { roomId });
-        
-        socket.current.on("all-users-video", (usersInRoom) => {
-          const peersList = [];
-          usersInRoom.forEach((userObj) => {
-            if (userObj.socketId !== socket.current.id) {
-              const peer = createPeer(userObj.socketId, socket.current.id, stream);
-              peersRef.current.push({
-                peerID: userObj.socketId,
-                peer,
-                username: userObj.username
-              });
-              peersList.push({
-                peerID: userObj.socketId,
-                peer,
-                username: userObj.username
-              });
-            }
-          });
-          setPeers(peersList);
-        });
-
-        socket.current.on("user-left-video", (socketId) => {
-          const peerObj = peersRef.current.find(p => p.peerID === socketId);
-          if (peerObj) peerObj.peer.destroy();
-          const peersUpdate = peersRef.current.filter(p => p.peerID !== socketId);
-          peersRef.current = peersUpdate;
-          setPeers(peersUpdate);
-        });
-
-      } catch (err) {
-        console.error("Camera access denied:", err);
-        if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
-          alert("WebRTC (Video Calling) requires HTTPS to work on non-localhost addresses (like your mobile phone). Use a tool like ngrok or configure a local SSL certificate.");
-        }
-      }
-    };
-
-    initMedia();
-
-    return () => {
-      if (socket.current) {
-        socket.current.off("user-joined-video");
-        socket.current.off("receiving-returned-signal");
-        socket.current.off("all-users-video");
-        socket.current.off("user-left-video");
-      }
-      peersRef.current.forEach(p => p.peer.destroy());
-    };
-  }, [isReady]);
-
-  function createPeer(userToSignal, callerID, stream) {
+  // ─── WebRTC ─────────────────────────────────────────────────────────────────
+  const createPeer = useCallback((userToSignal, callerID, stream) => {
     const peer = new Peer({
       initiator: true,
-      trickle: false,
+      trickle: true, // ✅ stream ICE candidates immediately
       stream,
+      config: {
+        iceServers: [
+          { urls: "stun:stun.l.google.com:19302" },
+          { urls: "stun:stun1.l.google.com:19302" },
+        ],
+      },
     });
 
     peer.on("signal", (signal) => {
-      socket.current.emit("sending-signal", {
+      socket.current?.emit("sending-signal", {
         userToSignal,
         callerID,
         signal,
@@ -202,67 +137,192 @@ const EditorPage = () => {
       });
     });
 
-    return peer;
-  }
+    peer.on("error", (err) => {
+      console.warn("Peer error (initiator):", err.message);
+      removePeer(userToSignal);
+    });
 
-  function addPeer(incomingSignal, callerID, stream, callerUsername) {
+    peer.on("close", () => removePeer(userToSignal));
+
+    return peer;
+  }, [socket, username, removePeer]);
+
+  const addPeer = useCallback((incomingSignal, callerID, stream, callerUsername) => {
     const peer = new Peer({
       initiator: false,
-      trickle: false,
+      trickle: true, // ✅ stream ICE candidates immediately
       stream,
+      config: {
+        iceServers: [
+          { urls: "stun:stun.l.google.com:19302" },
+          { urls: "stun:stun1.l.google.com:19302" },
+        ],
+      },
     });
 
     peer.on("signal", (signal) => {
-      socket.current.emit("returning-signal", { signal, callerID });
+      socket.current?.emit("returning-signal", { signal, callerID });
     });
+
+    peer.on("error", (err) => {
+      console.warn("Peer error (receiver):", err.message);
+      removePeer(callerID);
+    });
+
+    peer.on("close", () => removePeer(callerID));
 
     peer.signal(incomingSignal);
 
-    // Update UI state
-    setPeers(prev => [...prev, { peerID: callerID, peer, username: callerUsername }]);
-
     return peer;
-  }
+  }, [socket, removePeer]);
 
-  const toggleMic = () => {
-    if (localStream) {
-      const audioTrack = localStream.getAudioTracks()[0];
-      if (audioTrack) {
-        audioTrack.enabled = !audioTrack.enabled;
-        setIsMicOn(audioTrack.enabled);
+  const startCall = useCallback(async () => {
+    if (callStarted) {
+      setIsCallOpen(true);
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      setLocalStream(stream);
+      localStreamRef.current = stream;
+      setCallStarted(true);
+      setIsCallOpen(true);
+
+      const s = socket.current;
+      if (!s) return;
+
+      // ── Handle: an EXISTING user signals ME (they saw me join-video-group) ──
+      s.on("user-joined-video", (payload) => {
+        // payload: { signal, callerID, callerUsername }
+        if (peersMap.current.has(payload.callerID)) return; // already exists
+
+        const peer = addPeer(
+          payload.signal,
+          payload.callerID,
+          localStreamRef.current,
+          payload.callerUsername
+        );
+        peersMap.current.set(payload.callerID, { peer, username: payload.callerUsername });
+        syncPeersState();
+      });
+
+      // ── Handle: signal returned from receiver ──
+      s.on("receiving-returned-signal", (payload) => {
+        const existing = peersMap.current.get(payload.id);
+        if (existing) {
+          existing.peer.signal(payload.signal);
+        }
+      });
+
+      // ── Handle: user leaves ──
+      s.on("user-left-video", (socketId) => {
+        removePeer(socketId);
+      });
+
+      // ── Request list of existing users → create offers ──
+      s.emit("join-video-group", { roomId });
+
+      s.on("all-users-video", (usersInRoom) => {
+        // usersInRoom: [{ socketId, username }] — filtered to exclude us by server
+        usersInRoom.forEach((userObj) => {
+          if (userObj.socketId === s.id) return; // skip self
+          if (peersMap.current.has(userObj.socketId)) return; // skip duplicates
+
+          const peer = createPeer(userObj.socketId, s.id, localStreamRef.current);
+          peersMap.current.set(userObj.socketId, { peer, username: userObj.username });
+        });
+        syncPeersState();
+      });
+
+    } catch (err) {
+      console.error("Camera/mic access error:", err);
+      if (window.location.protocol !== "https:" && window.location.hostname !== "localhost") {
+        alert("Video calling requires HTTPS on non-localhost. Use ngrok or a local SSL cert.");
+      } else {
+        alert("Could not access camera or microphone. Please check permissions.");
       }
+    }
+  }, [callStarted, socket, roomId, addPeer, createPeer, syncPeersState, removePeer]);
+
+  const leaveCall = useCallback(() => {
+    setIsCallOpen(false);
+    // Destroy all peers
+    peersMap.current.forEach(({ peer }) => {
+      try { peer.destroy(); } catch (_) {}
+    });
+    peersMap.current.clear();
+    setPeers([]);
+
+    // Stop local stream tracks
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((t) => t.stop());
+      setLocalStream(null);
+      localStreamRef.current = null;
+    }
+    if (screenTrackRef.current) {
+      screenTrackRef.current.stop();
+      screenTrackRef.current = null;
+    }
+    setIsSharingScreen(false);
+    setIsMicOn(true);
+    setIsCamOn(true);
+    setCallStarted(false);
+
+    // Detach socket listeners
+    if (socket.current) {
+      socket.current.off("user-joined-video");
+      socket.current.off("receiving-returned-signal");
+      socket.current.off("all-users-video");
+      socket.current.off("user-left-video");
+    }
+  }, [socket]);
+
+  // Clean up on unmount
+  useEffect(() => {
+    return () => {
+      leaveCall();
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ─── Mic / Camera / Screen Share ─────────────────────────────────────────
+  const toggleMic = () => {
+    if (!localStreamRef.current) return;
+    const audioTrack = localStreamRef.current.getAudioTracks()[0];
+    if (audioTrack) {
+      audioTrack.enabled = !audioTrack.enabled;
+      setIsMicOn(audioTrack.enabled);
     }
   };
 
   const toggleCam = () => {
-    if (localStream) {
-      const videoTrack = localStream.getVideoTracks()[0];
-      if (videoTrack) {
-        videoTrack.enabled = !videoTrack.enabled;
-        setIsCamOn(videoTrack.enabled);
-      }
+    if (!localStreamRef.current) return;
+    const videoTrack = localStreamRef.current.getVideoTracks()[0];
+    if (videoTrack) {
+      videoTrack.enabled = !videoTrack.enabled;
+      setIsCamOn(videoTrack.enabled);
     }
   };
 
   const toggleShareScreen = async () => {
     if (!isSharingScreen) {
       try {
-        const screenStream = await navigator.mediaDevices.getDisplayMedia({ cursor: true });
+        const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, cursor: "always" });
         const screenTrack = screenStream.getVideoTracks()[0];
         screenTrackRef.current = screenTrack;
 
-        peersRef.current.forEach(({ peer }) => {
-          const videoTrack = localStream.getVideoTracks()[0];
-          peer.replaceTrack(videoTrack, screenTrack, localStream);
+        const camVideoTrack = localStreamRef.current?.getVideoTracks()[0];
+        peersMap.current.forEach(({ peer }) => {
+          if (camVideoTrack && localStreamRef.current) {
+            peer.replaceTrack(camVideoTrack, screenTrack, localStreamRef.current);
+          }
         });
 
         setIsSharingScreen(true);
 
-        screenTrack.onended = () => {
-          stopScreenShare();
-        };
+        screenTrack.onended = () => stopScreenShare();
       } catch (err) {
-        console.error("Error sharing screen:", err);
+        console.error("Screen share error:", err);
       }
     } else {
       stopScreenShare();
@@ -270,23 +330,28 @@ const EditorPage = () => {
   };
 
   const stopScreenShare = () => {
-    if (screenTrackRef.current) {
-      const videoTrack = localStream.getVideoTracks()[0];
-      peersRef.current.forEach(({ peer }) => {
-        peer.replaceTrack(screenTrackRef.current, videoTrack, localStream);
+    const screenTrack = screenTrackRef.current;
+    if (!screenTrack) return;
+
+    const camVideoTrack = localStreamRef.current?.getVideoTracks()[0];
+    if (camVideoTrack && localStreamRef.current) {
+      peersMap.current.forEach(({ peer }) => {
+        peer.replaceTrack(screenTrack, camVideoTrack, localStreamRef.current);
       });
-      screenTrackRef.current.stop();
-      screenTrackRef.current = null;
-      setIsSharingScreen(false);
     }
+    screenTrack.stop();
+    screenTrackRef.current = null;
+    setIsSharingScreen(false);
   };
 
+  // ─── Chat ────────────────────────────────────────────────────────────────
   const handleSendMessage = (text) => {
     if (socket.current && roomId && username) {
       socket.current.emit("send-message", { roomId, username, message: text });
     }
   };
 
+  // ─── Loading Screen ───────────────────────────────────────────────────────
   if (!isReady) {
     return (
       <div className="flex h-full w-full items-center justify-center bg-[#050508] relative overflow-hidden">
@@ -309,7 +374,7 @@ const EditorPage = () => {
       <div className="absolute bottom-[-15%] right-[-10%] w-[50vw] h-[50vw] rounded-full bg-purple-600/10 blur-[120px] pointer-events-none mix-blend-screen" />
       <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:64px_64px] pointer-events-none opacity-30" />
 
-      {/* Main Workspace Workspace */}
+      {/* Main Workspace */}
       <div className="relative z-10 flex h-full w-full overflow-hidden">
         <UserList users={users} copyRoomId={roomId} currentUser={username} />
 
@@ -334,37 +399,59 @@ const EditorPage = () => {
           />
         )}
 
-        {/* Vertical Toolbar for toggling panels */}
+        {/* Vertical Toolbar */}
         <div className="w-14 h-full bg-white/[0.02] backdrop-blur-[24px] border-l border-white/[0.05] flex flex-col items-center py-6 gap-6 shrink-0 z-30">
-          <button 
+          <button
             onClick={() => setActivePanel(activePanel === "chat" ? null : "chat")}
             className={`p-3 rounded-xl transition-all ${activePanel === "chat" ? "bg-indigo-500 text-white shadow-[0_0_15px_rgba(99,102,241,0.4)]" : "text-slate-400 hover:text-white hover:bg-white/[0.05]"}`}
             title="Team Chat"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
           </button>
-          
-          <button 
+
+          <button
             onClick={() => setActivePanel(activePanel === "ai" ? null : "ai")}
             className={`p-3 rounded-xl transition-all ${activePanel === "ai" ? "bg-purple-500 text-white shadow-[0_0_15px_rgba(168,85,247,0.4)]" : "text-slate-400 hover:text-white hover:bg-white/[0.05]"}`}
             title="Gemini AI Assistant"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v20"></path><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
           </button>
+
+          {/* Video Call Toggle */}
+          <button
+            onClick={() => {
+              if (!callStarted) {
+                startCall();
+              } else {
+                setIsCallOpen((prev) => !prev);
+              }
+            }}
+            className={`p-3 rounded-xl transition-all relative ${isCallOpen ? "bg-green-500 text-white shadow-[0_0_15px_rgba(34,197,94,0.4)]" : "text-slate-400 hover:text-white hover:bg-white/[0.05]"}`}
+            title={isCallOpen ? "Hide Video Call" : "Join Video Call"}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m22 8-6 4 6 4V8Z"/><rect width="14" height="12" x="2" y="6" rx="2" ry="2"/></svg>
+            {callStarted && !isCallOpen && (
+              <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+            )}
+          </button>
         </div>
       </div>
 
-      <VideoGrid
-        localStream={localStream}
-        peers={peers}
-        currentUser={username}
-        onToggleMic={toggleMic}
-        onToggleCam={toggleCam}
-        onShareScreen={toggleShareScreen}
-        isMicOn={isMicOn}
-        isCamOn={isCamOn}
-        isSharingScreen={isSharingScreen}
-      />
+      {/* Video Call Overlay — Google Meet style */}
+      {isCallOpen && (
+        <VideoGrid
+          localStream={localStream}
+          peers={peers}
+          currentUser={username}
+          onToggleMic={toggleMic}
+          onToggleCam={toggleCam}
+          onShareScreen={toggleShareScreen}
+          onLeaveCall={leaveCall}
+          isMicOn={isMicOn}
+          isCamOn={isCamOn}
+          isSharingScreen={isSharingScreen}
+        />
+      )}
     </div>
   );
 };

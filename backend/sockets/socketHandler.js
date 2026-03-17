@@ -139,12 +139,14 @@ const setupSocketHandler = (io) => {
       if (roomId && rooms[roomId]) {
         delete rooms[roomId].users[socket.id];
 
+        // Always notify remaining peers to clean up video tile
+        io.to(roomId).emit("user-left-video", socket.id);
+
         if (Object.keys(rooms[roomId].users).length === 0) {
           delete rooms[roomId];
           clearTimeout(saveTimers[roomId]);
         } else {
           io.to(roomId).emit("user-left", getUserList(roomId));
-          io.to(roomId).emit("user-left-video", socket.id);
         }
 
         console.log(`${socket.username || socket.id} left room: ${roomId}`);
@@ -173,10 +175,13 @@ const setupSocketHandler = (io) => {
     socket.on("join-video-group", ({ roomId }) => {
       if (!roomId || !rooms[roomId]) return;
       
-      const usersInRoom = Object.keys(rooms[roomId].users).map(id => ({
-        socketId: id,
-        username: rooms[roomId].users[id].username
-      }));
+      // Filter out the requesting socket — they don't need to signal themselves
+      const usersInRoom = Object.keys(rooms[roomId].users)
+        .filter(id => id !== socket.id)
+        .map(id => ({
+          socketId: id,
+          username: rooms[roomId].users[id].username
+        }));
 
       socket.emit("all-users-video", usersInRoom);
     });
