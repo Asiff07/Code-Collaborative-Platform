@@ -2,26 +2,19 @@ import React, { useEffect, useRef, useState } from "react";
 
 // ─── Single remote peer video tile ─────────────────────────────────────────
 const RemoteVideo = ({ peer, username, isMicOn = true, isCamOn = true }) => {
-  const ref = useRef();
-  const [hasStream, setHasStream] = useState(false);
+  const [stream, setStream] = useState(null);
 
   useEffect(() => {
     if (!peer) return;
 
-    const handleStream = (stream) => {
-      if (ref.current) {
-        ref.current.srcObject = stream;
-        // Some browsers need an explicit play() call after srcObject is set
-        ref.current.play().catch(() => {});
-        setHasStream(true);
-      }
+    const handleStream = (remoteStream) => {
+      setStream(remoteStream);
     };
 
     // Register stream listener
     peer.on("stream", handleStream);
 
     // Handle case where stream already arrived before component mounted
-    // simple-peer exposes .streams (array) as a public property
     if (peer.streams && peer.streams.length > 0) {
       handleStream(peer.streams[0]);
     }
@@ -31,13 +24,21 @@ const RemoteVideo = ({ peer, username, isMicOn = true, isCamOn = true }) => {
     };
   }, [peer]);
 
+  // Use a callback ref to safely attach the stream when the <video> element mounts
+  const videoRef = useCallback((node) => {
+    if (node && stream) {
+      node.srcObject = stream;
+      node.play().catch(() => {});
+    }
+  }, [stream]);
+
   const initial = username ? username[0].toUpperCase() : "?";
 
   return (
     <div className="relative w-full h-full rounded-2xl overflow-hidden bg-[#1a1a2e] border border-white/10 shadow-xl flex items-center justify-center group">
-      {hasStream && isCamOn ? (
+      {stream && isCamOn ? (
         <video
-          ref={ref}
+          ref={videoRef}
           autoPlay
           playsInline
           className="w-full h-full object-cover"
@@ -50,7 +51,7 @@ const RemoteVideo = ({ peer, username, isMicOn = true, isCamOn = true }) => {
           >
             {initial}
           </div>
-          <p className="text-slate-400 text-sm">{hasStream ? "Camera Off" : "Connecting…"}</p>
+          <p className="text-slate-400 text-sm">{stream ? "Camera Off" : "Connecting…"}</p>
         </div>
       )}
 
@@ -69,11 +70,10 @@ const RemoteVideo = ({ peer, username, isMicOn = true, isCamOn = true }) => {
 
 // ─── Local video tile ───────────────────────────────────────────────────────
 const LocalVideo = ({ stream, username, isMicOn, isCamOn }) => {
-  const ref = useRef();
-
-  useEffect(() => {
-    if (ref.current && stream) {
-      ref.current.srcObject = stream;
+  const videoRef = useCallback((node) => {
+    if (node && stream) {
+      node.srcObject = stream;
+      node.play().catch(() => {});
     }
   }, [stream]);
 
@@ -83,7 +83,7 @@ const LocalVideo = ({ stream, username, isMicOn, isCamOn }) => {
     <div className="relative w-full h-full rounded-2xl overflow-hidden bg-[#1a1a2e] border-2 border-indigo-500/50 shadow-xl flex items-center justify-center">
       {isCamOn && stream ? (
         <video
-          ref={ref}
+          ref={videoRef}
           autoPlay
           playsInline
           muted
