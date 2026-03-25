@@ -71,9 +71,21 @@ export const requestAiAssist = async (prompt, code, language) => {
 };
 
 /** Requests Stripe Checkout Session Setup */
-export const requestStripeCheckout = async (planId) => {
-  const { data } = await api.post("/api/stripe/create-checkout-session", { planId });
+export const requestStripeCheckout = async (planId, returnUrl) => {
+  const { data } = await api.post("/api/stripe/create-checkout-session", { planId, returnUrl });
   return data; // { url }
+};
+
+/** Verifies Stripe Checkout Session */
+export const verifyStripeSession = async (sessionId) => {
+  const { data } = await api.post("/api/stripe/verify-session", { sessionId });
+  return data;
+};
+
+/** Executes Code via Backend JDoodle Proxy */
+export const executeCode = async (language, code) => {
+  const { data } = await api.post("/api/execute", { language, code });
+  return data;
 };
 
 export default api;

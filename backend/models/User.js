@@ -23,6 +23,10 @@ const userSchema = new mongoose.Schema(
       type: Number,
       default: 5,
     },
+    fulfilledSessions: {
+      type: [String],
+      default: [],
+    },
   },
   { timestamps: true }
 );

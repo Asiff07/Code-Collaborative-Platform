@@ -9,6 +9,7 @@ const workspaceRoutes = require("./routes/workspaceRoutes");
 const authRoutes = require("./routes/authRoutes");
 const aiRoutes = require("./routes/aiRoutes");
 const stripeRoutes = require("./routes/stripeRoutes");
+const executionRoutes = require("./routes/executionRoutes");
 const { webhookHandler } = require("./controllers/stripeController");
 const setupSocketHandler = require("./sockets/socketHandler");
 
@@ -34,6 +35,7 @@ app.use("/api/workspaces", workspaceRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/api/stripe", stripeRoutes);
+app.use("/api/execute", executionRoutes);
 
 app.get("/health", (req, res) => res.json({ status: "ok" }));
 

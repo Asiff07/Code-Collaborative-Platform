@@ -19,6 +19,28 @@ const CodeEditor = ({
   const cursorDecorationsRef = useRef({});
   const [selectedCode, setSelectedCode] = useState("");
 
+  const [outputTerminalHeight, setOutputTerminalHeight] = useState(0);
+  const [executionOutput, setExecutionOutput] = useState(null);
+  const [isExecuting, setIsExecuting] = useState(false);
+
+  const runCode = async () => {
+    if (!editorRef.current) return;
+    const code = editorRef.current.getValue();
+    setIsExecuting(true);
+    setOutputTerminalHeight(250); // Open terminal
+    setExecutionOutput(null);
+    try {
+      const { executeCode } = await import("../services/api");
+      const result = await executeCode(language, code);
+      setExecutionOutput(result);
+    } catch (err) {
+      // Axios error from backend usually in err.response.data.message
+      setExecutionOutput({ error: err.response?.data?.message || err.message || "Execution failed" });
+    } finally {
+      setIsExecuting(false);
+    }
+  };
+
   useEffect(() => {
     setLanguage(initialLanguage);
   }, [initialLanguage]);
@@ -26,6 +48,11 @@ const CodeEditor = ({
   const handleEditorDidMount = (editor, monaco) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
+
+    // Fix cursor drift by remeasuring fonts after custom web fonts load
+    document.fonts.ready.then(() => {
+      monaco.editor.remeasureFonts();
+    });
 
     isRemoteChange.current = true;
     editor.setValue(initialCode || "");
@@ -174,9 +201,26 @@ const CodeEditor = ({
           </div>
         </div>
 
-        <div className="relative">
-          <select
-            value={language}
+        <div className="flex items-center gap-3">
+          {["javascript", "typescript", "python", "java", "cpp"].includes(language) && (
+            <button
+              onClick={runCode}
+              disabled={isExecuting}
+              className="flex items-center gap-1.5 bg-green-500/10 hover:bg-green-500/20 border border-green-500/20 text-green-400 font-bold text-xs px-3 py-1.5 rounded-lg shadow-sm transition-all shadow-green-500/10 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Run Code"
+            >
+              {isExecuting ? (
+                <div className="w-3.5 h-3.5 border-2 border-green-500/30 border-t-green-500 rounded-full animate-spin"></div>
+              ) : (
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+              )}
+              Run
+            </button>
+          )}
+
+          <div className="relative">
+            <select
+              value={language}
             onChange={handleLanguageChange}
             className="appearance-none bg-black/40 border border-white/[0.08] text-slate-300 text-xs font-semibold rounded-lg pl-4 pr-10 py-2 outline-none focus:border-indigo-500/50 focus:ring-2 focus:ring-indigo-500/20 transition-all cursor-pointer shadow-inner shadow-black/50"
           >
@@ -191,43 +235,100 @@ const CodeEditor = ({
           </select>
           <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
         </div>
+        </div>
       </div>
 
-      <div className="flex-1 w-full h-full relative">
-        <Editor
-          height="100%"
-          width="100%"
-          language={language}
-          theme="vs-dark"
-          onMount={handleEditorDidMount}
-          onChange={handleEditorChange}
-          options={{
-            minimap: { enabled: false },
-            fontSize: 14,
-            fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-            lineHeight: 24,
-            padding: { top: 24 },
-            scrollBeyondLastLine: false,
-            smoothScrolling: true,
-            cursorBlinking: "smooth",
-            cursorSmoothCaretAnimation: "on",
-            formatOnPaste: true,
-            contextmenu: true,
-            scrollbar: {
-              verticalScrollbarSize: 8,
-              horizontalScrollbarSize: 8,
-            },
-          }}
-          loading={
-            <div className="absolute inset-0 flex flex-col gap-4 items-center justify-center bg-transparent text-slate-400">
-              <div className="relative w-10 h-10 flex items-center justify-center">
-                <div className="absolute inset-0 rounded-full border-t-2 border-indigo-500 animate-spin"></div>
-                <div className="absolute inset-1.5 rounded-full border-t-2 border-purple-500 animate-[spin_1.5s_linear_infinite_reverse]"></div>
+      <div className="flex-1 w-full h-full relative flex flex-col min-h-0">
+        <div className="flex-1 min-h-0 relative">
+          <Editor
+            height="100%"
+            width="100%"
+            language={language}
+            theme="vs-dark"
+            onMount={handleEditorDidMount}
+            onChange={handleEditorChange}
+            options={{
+              minimap: { enabled: false },
+              fontSize: 14,
+              fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+              lineHeight: 24,
+              padding: { top: 24 },
+              scrollBeyondLastLine: false,
+              smoothScrolling: true,
+              cursorBlinking: "smooth",
+              cursorSmoothCaretAnimation: "on",
+              formatOnPaste: true,
+              contextmenu: true,
+              scrollbar: {
+                verticalScrollbarSize: 8,
+                horizontalScrollbarSize: 8,
+              },
+            }}
+            loading={
+              <div className="absolute inset-0 flex flex-col gap-4 items-center justify-center bg-transparent text-slate-400">
+                <div className="relative w-10 h-10 flex items-center justify-center">
+                  <div className="absolute inset-0 rounded-full border-t-2 border-indigo-500 animate-spin"></div>
+                  <div className="absolute inset-1.5 rounded-full border-t-2 border-purple-500 animate-[spin_1.5s_linear_infinite_reverse]"></div>
+                </div>
+                <p className="text-sm font-medium tracking-wide">Initializing Editor...</p>
               </div>
-              <p className="text-sm font-medium tracking-wide">Initializing Editor...</p>
+            }
+          />
+        </div>
+
+        {/* Output Terminal */}
+        {outputTerminalHeight > 0 && (
+          <div 
+            style={{ height: outputTerminalHeight }} 
+            className="w-full bg-[#0a0a0f] border-t border-white/[0.1] flex flex-col z-20 flex-shrink-0"
+          >
+            <div className="flex items-center justify-between px-4 py-2 bg-black/40 border-b border-white/[0.05]">
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-300 tracking-wide uppercase">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+                Output Terminal
+              </div>
+              <button 
+                onClick={() => setOutputTerminalHeight(0)}
+                className="text-slate-500 hover:text-white transition-colors"
+                title="Close Terminal"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              </button>
             </div>
-          }
-        />
+            
+            <div className="flex-1 overflow-auto p-4 font-mono text-sm scrollbar-thin">
+              {isExecuting ? (
+                <div className="text-slate-500 flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin"></div>
+                  Executing code on remote server...
+                </div>
+              ) : executionOutput?.error ? (
+                <div className="text-red-400 whitespace-pre-wrap">{executionOutput.error}</div>
+              ) : executionOutput?.compile || executionOutput?.run ? (
+                <div className="whitespace-pre-wrap">
+                  {executionOutput.compile?.output && (
+                    <div className="text-yellow-400 mb-2">{executionOutput.compile.output}</div>
+                  )}
+                  {executionOutput.run?.stdout && (
+                    <div className="text-slate-300">{executionOutput.run.stdout}</div>
+                  )}
+                  {executionOutput.run?.stderr && (
+                    <div className="text-red-400">{executionOutput.run.stderr}</div>
+                  )}
+                  {!executionOutput.compile?.output && !executionOutput.run?.stdout && !executionOutput.run?.stderr && (
+                    <div className="text-slate-500 italic">Program exited with no output.</div>
+                  )}
+                  {executionOutput.run && (
+                    <div className="mt-4 pt-2 border-t border-white/[0.05] text-slate-500 text-xs flex gap-4">
+                      <span>Exit Code: {executionOutput.run.code}</span>
+                      {executionOutput.run.signal && <span>Signal: {executionOutput.run.signal}</span>}
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        )}
       </div>
       </div>
       

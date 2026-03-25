@@ -40,9 +40,10 @@ const CreditPlansPanel = ({ onClose, currentUserCredits }) => {
     setLoading(planId);
     setError(null);
     try {
-      const data = await requestStripeCheckout(planId);
+      const returnUrl = window.location.pathname + window.location.search;
+      const data = await requestStripeCheckout(planId, returnUrl);
       if (data && data.url) {
-        window.location.href = data.url;
+        window.open(data.url, "_blank");
       }
     } catch (err) {
       console.error(err);

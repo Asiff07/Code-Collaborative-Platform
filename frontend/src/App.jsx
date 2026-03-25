@@ -6,6 +6,7 @@ import EditorPage from "./pages/EditorPage";
 import LoginPage from "./pages/LoginPage";
 import SignupPage from "./pages/SignupPage";
 import UpgradePage from "./pages/UpgradePage";
+import PaymentSuccess from "./pages/PaymentSuccess";
 
 const ProtectedRoute = ({ children }) => {
   const { token, loading } = useContext(AuthContext);
@@ -39,6 +40,14 @@ const App = () => {
             element={
               <ProtectedRoute>
                 <UpgradePage />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/payment-success" 
+            element={
+              <ProtectedRoute>
+                <PaymentSuccess />
               </ProtectedRoute>
             } 
           />

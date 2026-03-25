@@ -23,7 +23,7 @@ const EditorPage = () => {
     }
   };
 
-  const username = location.state?.username;
+  const username = location.state?.username || user?.name;
   const { socket } = useSocket();
 
   const [users, setUsers] = useState([]);
@@ -56,7 +56,7 @@ const EditorPage = () => {
   const syncPeersState = useCallback(() => {
     const arr = [];
     peersMap.current.forEach((val, peerID) => {
-      arr.push({ peerID, peer: val.peer, username: val.username });
+      arr.push({ peerID, peer: val.peer, username: val.username, isMicOn: val.isMicOn, isCamOn: val.isCamOn });
     });
     setPeers([...arr]);
   }, []);
@@ -97,6 +97,17 @@ const EditorPage = () => {
         setMessages((prev) => [...prev, msg]);
       });
 
+      // ── Handle Remote Media Toggles (Video Call UI) ──
+      s.on("user-video-state-changed", ({ socketId, isMicOn, isCamOn }) => {
+        const existing = peersMap.current.get(socketId);
+        if (existing) {
+          existing.isMicOn = isMicOn;
+          existing.isCamOn = isCamOn;
+          peersMap.current.set(socketId, existing);
+          syncPeersState();
+        }
+      });
+
       s.on("error", (err) => {
         console.error("Socket error:", err);
         alert(err.message || "An error occurred");
@@ -110,10 +121,11 @@ const EditorPage = () => {
         socket.current.off("user-joined");
         socket.current.off("user-left");
         socket.current.off("receive-message");
+        socket.current.off("user-video-state-changed");
         socket.current.off("error");
       }
     };
-  }, [roomId, username, navigate, socket]);
+  }, [roomId, username, navigate, socket, syncPeersState]);
 
   // ─── WebRTC ─────────────────────────────────────────────────────────────────
   // Free TURN servers (Open Relay Project) — required for cross-network / mobile
@@ -214,8 +226,15 @@ const EditorPage = () => {
 
       // ── Handle: an EXISTING user signals ME (they saw me join-video-group) ──
       s.on("user-joined-video", (payload) => {
-        // payload: { signal, callerID, callerUsername }
-        if (peersMap.current.has(payload.callerID)) return; // already exists
+        // payload: { signal, callerID, callerUsername, isMicOn, isCamOn }
+        const existing = peersMap.current.get(payload.callerID);
+        
+        // Critical Fix: If peer already exists, this is NOT a new connection, 
+        // it is a Simple-Peer 'trickle' ICE Candidate. Pass it directly!
+        if (existing) {
+          existing.peer.signal(payload.signal);
+          return;
+        }
 
         const peer = addPeer(
           payload.signal,
@@ -223,7 +242,12 @@ const EditorPage = () => {
           localStreamRef.current,
           payload.callerUsername
         );
-        peersMap.current.set(payload.callerID, { peer, username: payload.callerUsername });
+        peersMap.current.set(payload.callerID, { 
+          peer, 
+          username: payload.callerUsername,
+          isMicOn: payload.isMicOn ?? true,
+          isCamOn: payload.isCamOn ?? true
+        });
         syncPeersState();
       });
 
@@ -241,16 +265,21 @@ const EditorPage = () => {
       });
 
       // ── Request list of existing users → create offers ──
-      s.emit("join-video-group", { roomId });
+      s.emit("join-video-group", { roomId, isMicOn: true, isCamOn: true });
 
       s.on("all-users-video", (usersInRoom) => {
-        // usersInRoom: [{ socketId, username }] — filtered to exclude us by server
+        // usersInRoom: [{ socketId, username, isMicOn, isCamOn }] — filtered to exclude us by server
         usersInRoom.forEach((userObj) => {
           if (userObj.socketId === s.id) return; // skip self
           if (peersMap.current.has(userObj.socketId)) return; // skip duplicates
 
           const peer = createPeer(userObj.socketId, s.id, localStreamRef.current);
-          peersMap.current.set(userObj.socketId, { peer, username: userObj.username });
+          peersMap.current.set(userObj.socketId, { 
+            peer, 
+            username: userObj.username,
+            isMicOn: userObj.isMicOn ?? true,
+            isCamOn: userObj.isCamOn ?? true
+          });
         });
         syncPeersState();
       });
@@ -312,6 +341,7 @@ const EditorPage = () => {
     if (audioTrack) {
       audioTrack.enabled = !audioTrack.enabled;
       setIsMicOn(audioTrack.enabled);
+      socket.current?.emit("toggle-video-state", { roomId, isMicOn: audioTrack.enabled, isCamOn });
     }
   };
 
@@ -321,6 +351,7 @@ const EditorPage = () => {
     if (videoTrack) {
       videoTrack.enabled = !videoTrack.enabled;
       setIsCamOn(videoTrack.enabled);
+      socket.current?.emit("toggle-video-state", { roomId, isMicOn, isCamOn: videoTrack.enabled });
     }
   };
 

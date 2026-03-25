@@ -21,18 +21,21 @@ const PLANS = {
 
 const createCheckoutSession = async (req, res) => {
   try {
-    const { planId } = req.body;
+    const { planId, returnUrl } = req.body;
     const plan = PLANS[planId];
 
     if (!plan) {
       return res.status(400).json({ message: "Invalid plan selected" });
     }
 
+    const frontendUrl = process.env.CLIENT_URL || "http://localhost:5173";
+    const redirectUrl = returnUrl || "/dashboard";
+
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       mode: "payment",
-      success_url: `${process.env.CLIENT_URL || "http://localhost:5173"}/editor?payment=success`,
-      cancel_url: `${process.env.CLIENT_URL || "http://localhost:5173"}/editor?payment=cancelled`,
+      success_url: `${frontendUrl}/payment-success?session_id={CHECKOUT_SESSION_ID}&return_to=${encodeURIComponent(redirectUrl)}`,
+      cancel_url: `${frontendUrl}${redirectUrl}?payment=cancelled`,
       customer_email: req.user.email,
       metadata: {
         userId: req.user._id.toString(),
@@ -99,7 +102,61 @@ const webhookHandler = async (req, res) => {
   res.send();
 };
 
+const verifySession = async (req, res) => {
+  try {
+    const { sessionId } = req.body;
+    
+    if (!sessionId) {
+      return res.status(400).json({ message: "Session ID is required" });
+    }
+
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+
+    if (session.payment_status === "paid") {
+      const addedCredits = parseInt(session.metadata?.credits || "0", 10);
+      const user = await User.findById(req.user._id);
+
+      if (!user) {
+         return res.status(404).json({ message: "User not found" });
+      }
+
+      // Check if this session was already fulfilled
+      if (user.fulfilledSessions && user.fulfilledSessions.includes(sessionId)) {
+        return res.status(200).json({ 
+          success: true, 
+          message: "Payment already fulfilled",
+          credits: user.credits
+        });
+      }
+
+      // Fulfill the payment
+      if (addedCredits > 0) {
+        user.credits += addedCredits;
+      }
+      
+      if (!user.fulfilledSessions) {
+        user.fulfilledSessions = [];
+      }
+      user.fulfilledSessions.push(sessionId);
+      
+      await user.save();
+      
+      return res.status(200).json({
+        success: true,
+        message: "Payment verified and credits added",
+        credits: user.credits
+      });
+    }
+
+    return res.status(400).json({ success: false, message: "Payment not completed" });
+  } catch (error) {
+    console.error("Verify Session Error:", error);
+    return res.status(500).json({ message: "Failed to verify session" });
+  }
+};
+
 module.exports = {
   createCheckoutSession,
   webhookHandler,
+  verifySession,
 };

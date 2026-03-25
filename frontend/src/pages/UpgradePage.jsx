@@ -42,7 +42,8 @@ const UpgradePage = () => {
     setLoading(planId);
     setError(null);
     try {
-      const data = await requestStripeCheckout(planId);
+      const returnUrl = window.location.pathname + window.location.search;
+      const data = await requestStripeCheckout(planId, returnUrl);
       if (data && data.url) {
         // Redirect to Stripe Checkout
         window.location.href = data.url;

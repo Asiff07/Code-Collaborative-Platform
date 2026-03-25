@@ -26,6 +26,17 @@ export const AuthProvider = ({ children }) => {
     }
   }, [token]);
 
+  // Sync state when localStorage changes in another tab
+  useEffect(() => {
+    const handleStorageChange = (e) => {
+      if (e.key === "user" && e.newValue) {
+        setUser(JSON.parse(e.newValue));
+      }
+    };
+    window.addEventListener("storage", handleStorageChange);
+    return () => window.removeEventListener("storage", handleStorageChange);
+  }, []);
+
   const login = async (email, password) => {
     const { data } = await api.post("/api/auth/login", { email, password });
     setToken(data.token);
@@ -52,7 +63,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, signup, logout, loading }}>
+    <AuthContext.Provider value={{ user, setUser, token, login, signup, logout, loading }}>
       {!loading && children}
     </AuthContext.Provider>
   );

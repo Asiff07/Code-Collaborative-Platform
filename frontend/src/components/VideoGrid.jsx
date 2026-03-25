@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 
 // ─── Single remote peer video tile ─────────────────────────────────────────
-const RemoteVideo = ({ peer, username }) => {
+const RemoteVideo = ({ peer, username, isMicOn = true, isCamOn = true }) => {
   const ref = useRef();
   const [hasStream, setHasStream] = useState(false);
 
@@ -35,7 +35,7 @@ const RemoteVideo = ({ peer, username }) => {
 
   return (
     <div className="relative w-full h-full rounded-2xl overflow-hidden bg-[#1a1a2e] border border-white/10 shadow-xl flex items-center justify-center group">
-      {hasStream ? (
+      {hasStream && isCamOn ? (
         <video
           ref={ref}
           autoPlay
@@ -50,13 +50,18 @@ const RemoteVideo = ({ peer, username }) => {
           >
             {initial}
           </div>
-          <p className="text-slate-400 text-sm">Connecting…</p>
+          <p className="text-slate-400 text-sm">{hasStream ? "Camera Off" : "Connecting…"}</p>
         </div>
       )}
 
       {/* Username label */}
       <div className="absolute bottom-3 left-3 flex items-center gap-1.5 bg-black/60 backdrop-blur-sm px-2.5 py-1 rounded-lg text-xs font-semibold text-white shadow">
         {username}
+        {!isMicOn && (
+          <div className="text-red-400 ml-1">
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="2" y1="2" x2="22" y2="22"/><path d="M18.89 13.23A7.12 7.12 0 0 0 19 12v-2"/><path d="M5 10v2a7 7 0 0 0 12 5"/><path d="M15 9.34V5a3 3 0 0 0-5.68-1.33"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -201,6 +206,8 @@ const VideoGrid = ({
             key={peerObj.peerID}
             peer={peerObj.peer}
             username={peerObj.username}
+            isMicOn={peerObj.isMicOn}
+            isCamOn={peerObj.isCamOn}
           />
         ))}
       </div>

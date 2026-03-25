@@ -157,10 +157,21 @@ const setupSocketHandler = (io) => {
     // --- WebRTC Video Call Signaling ---
     socket.on("sending-signal", (payload) => {
       // payload: { userToSignal, callerID, signal, callerUsername }
+      const roomId = socket.currentRoom;
+      let isMicOn = true;
+      let isCamOn = true;
+      if (roomId && rooms[roomId] && rooms[roomId].users[payload.callerID]) {
+        const user = rooms[roomId].users[payload.callerID];
+        if (user.isMicOn !== undefined) isMicOn = user.isMicOn;
+        if (user.isCamOn !== undefined) isCamOn = user.isCamOn;
+      }
+
       io.to(payload.userToSignal).emit("user-joined-video", {
         signal: payload.signal,
         callerID: payload.callerID,
         callerUsername: payload.callerUsername,
+        isMicOn,
+        isCamOn
       });
     });
 
@@ -172,18 +183,42 @@ const setupSocketHandler = (io) => {
       });
     });
 
-    socket.on("join-video-group", ({ roomId }) => {
+    socket.on("join-video-group", ({ roomId, isMicOn, isCamOn }) => {
       if (!roomId || !rooms[roomId]) return;
       
+      // Store the video state for this user so future participants get the correct intial state
+      if (rooms[roomId].users[socket.id]) {
+        rooms[roomId].users[socket.id].isMicOn = isMicOn ?? true;
+        rooms[roomId].users[socket.id].isCamOn = isCamOn ?? true;
+      }
+
       // Filter out the requesting socket — they don't need to signal themselves
       const usersInRoom = Object.keys(rooms[roomId].users)
         .filter(id => id !== socket.id)
         .map(id => ({
           socketId: id,
-          username: rooms[roomId].users[id].username
+          username: rooms[roomId].users[id].username,
+          isMicOn: rooms[roomId].users[id].isMicOn ?? true,
+          isCamOn: rooms[roomId].users[id].isCamOn ?? true,
         }));
 
       socket.emit("all-users-video", usersInRoom);
+    });
+
+    socket.on("toggle-video-state", ({ roomId, isMicOn, isCamOn }) => {
+      if (!roomId || !rooms[roomId]) return;
+
+      if (rooms[roomId].users[socket.id]) {
+        rooms[roomId].users[socket.id].isMicOn = isMicOn;
+        rooms[roomId].users[socket.id].isCamOn = isCamOn;
+      }
+
+      // Broadcast to everyone else in the room
+      socket.to(roomId).emit("user-video-state-changed", {
+        socketId: socket.id,
+        isMicOn,
+        isCamOn
+      });
     });
 
     // Add an endpoint for credits refreshing
