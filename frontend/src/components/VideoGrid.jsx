@@ -11,16 +11,24 @@ const RemoteVideo = ({ peer, username, isMicOn = true, isCamOn = true }) => {
       setStream(remoteStream);
     };
 
-    // Register stream listener
-    peer.on("stream", handleStream);
+    // React 18 / Chrome 120+ track-level listener fallback
+    const handleTrack = (track, remoteStream) => {
+      setStream(remoteStream);
+    };
 
-    // Handle case where stream already arrived before component mounted
+    peer.on("stream", handleStream);
+    peer.on("track", handleTrack);
+
+    // Handle case where stream already arrived
     if (peer.streams && peer.streams.length > 0) {
       handleStream(peer.streams[0]);
+    } else if (peer._remoteStreams && peer._remoteStreams.length > 0) {
+      handleStream(peer._remoteStreams[0]);
     }
 
     return () => {
       peer.off("stream", handleStream);
+      peer.off("track", handleTrack);
     };
   }, [peer]);
 
