@@ -29,6 +29,10 @@ const workspaceSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    currentCommitId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Commit",
+    },
     language: {
       type: String,
       default: "javascript",

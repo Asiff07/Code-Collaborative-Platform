@@ -1,5 +1,7 @@
-import React, { useRef, useEffect, useState } from "react";
+import React, { useRef, useEffect, useState, useContext } from "react";
 import Editor from "@monaco-editor/react";
+import axios from "axios";
+import { AuthContext } from "../context/AuthContext";
 import AiActionPanel from "./AiActionPanel";
 
 const CodeEditor = ({
@@ -23,6 +25,11 @@ const CodeEditor = ({
   const [executionOutput, setExecutionOutput] = useState(null);
   const [isExecuting, setIsExecuting] = useState(false);
 
+  const { user } = useContext(AuthContext);
+  const [isCommitting, setIsCommitting] = useState(false);
+  const lastCommittedCodeRef = useRef(initialCode || "");
+  const typingTimeoutRef = useRef(null);
+
   const runCode = async () => {
     if (!editorRef.current) return;
     const code = editorRef.current.getValue();
@@ -39,6 +46,41 @@ const CodeEditor = ({
     } finally {
       setIsExecuting(false);
     }
+  };
+
+  const triggerCommit = async (code, type, message = "") => {
+    if (!user?.token) return;
+    try {
+      setIsCommitting(true);
+      const headers = { Authorization: `Bearer ${user.token}` };
+      await axios.post(`${import.meta.env.VITE_API_URL || "http://localhost:5000"}/api/commits`, {
+        roomId,
+        codeContent: code,
+        type,
+        message
+      }, { headers });
+      lastCommittedCodeRef.current = code;
+    } catch (err) {
+      console.error("Commit error:", err);
+      // Ignore 400 identical code or 429 rate limit silently for auto, alert for manual
+      if (type === "manual") {
+        alert(err.response?.data?.message || "Failed to commit");
+      }
+    } finally {
+      setIsCommitting(false);
+    }
+  };
+
+  const manualCommit = () => {
+    if (!editorRef.current) return;
+    const code = editorRef.current.getValue();
+    if (code === lastCommittedCodeRef.current) {
+      alert("No changes to commit.");
+      return;
+    }
+    const message = window.prompt("Enter commit message:");
+    if (message === null) return; // User cancelled
+    triggerCommit(code, "manual", message || "Manual Commit");
   };
 
   useEffect(() => {
@@ -84,6 +126,14 @@ const CodeEditor = ({
     
     if (!isRemoteChange.current) {
       socket.emit("code-change", { roomId, code: value });
+
+      // Auto commit logic
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = setTimeout(() => {
+        if (value !== lastCommittedCodeRef.current) {
+          triggerCommit(value, "auto");
+        }
+      }, 15000); // 15 seconds idle
     }
   };
 
@@ -106,6 +156,8 @@ const CodeEditor = ({
         editorRef.current.setPosition(currentPos);
       }
       isRemoteChange.current = false;
+      lastCommittedCodeRef.current = newCode;
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     };
 
     const onCursorUpdate = ({ socketId, username, color, lineNumber, column }) => {
@@ -217,6 +269,20 @@ const CodeEditor = ({
               Run
             </button>
           )}
+
+          <button
+            onClick={manualCommit}
+            disabled={isCommitting}
+            className="flex items-center gap-1.5 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 text-blue-400 font-bold text-xs px-3 py-1.5 rounded-lg shadow-sm transition-all shadow-blue-500/10 disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Commit Code"
+          >
+            {isCommitting ? (
+              <div className="w-3.5 h-3.5 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin"></div>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+            )}
+            Commit
+          </button>
 
           <div className="relative">
             <select

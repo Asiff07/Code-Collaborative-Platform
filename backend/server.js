@@ -10,6 +10,7 @@ const authRoutes = require("./routes/authRoutes");
 const aiRoutes = require("./routes/aiRoutes");
 const stripeRoutes = require("./routes/stripeRoutes");
 const executionRoutes = require("./routes/executionRoutes");
+const commitRoutes = require("./routes/commitRoutes");
 const { webhookHandler } = require("./controllers/stripeController");
 const setupSocketHandler = require("./sockets/socketHandler");
 
@@ -22,6 +23,8 @@ const io = new Server(server, {
     methods: ["GET", "POST"],
   },
 });
+
+app.set("io", io);
 
 app.use(cors({ origin: process.env.CLIENT_URL || "http://localhost:5173" }));
 
@@ -36,6 +39,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/api/stripe", stripeRoutes);
 app.use("/api/execute", executionRoutes);
+app.use("/api/commits", commitRoutes);
 
 app.get("/health", (req, res) => res.json({ status: "ok" }));
 

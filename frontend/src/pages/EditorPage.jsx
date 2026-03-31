@@ -9,6 +9,7 @@ import CodeEditor from "../components/CodeEditor";
 import ChatPanel from "../components/ChatPanel";
 import VideoGrid from "../components/VideoGrid";
 import CreditPlansPanel from "../components/CreditPlansPanel";
+import VersionHistoryPanel from "../components/VersionHistoryPanel";
 
 const EditorPage = () => {
   const { roomId } = useParams();
@@ -457,6 +458,14 @@ const EditorPage = () => {
           />
         )}
 
+        {activePanel === "history" && (
+          <VersionHistoryPanel
+            roomId={roomId}
+            onClose={() => setActivePanel(null)}
+            token={user?.token}
+          />
+        )}
+
         {/* Vertical Toolbar */}
         <div className="w-14 h-full bg-white/[0.02] backdrop-blur-[24px] border-l border-white/[0.05] flex flex-col items-center py-6 gap-6 shrink-0 z-30">
           <button
@@ -498,6 +507,15 @@ const EditorPage = () => {
             onClick={() => setActivePanel(activePanel === "credits" ? null : "credits")}
             className={`p-3 rounded-xl transition-all ${activePanel === "credits" ? "bg-yellow-500 text-white shadow-[0_0_15px_rgba(234,179,8,0.4)]" : "text-slate-400 hover:text-white hover:bg-white/[0.05]"}`}
             title="AI Credits"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+          </button>
+
+          {/* History Panel Toggle */}
+          <button
+            onClick={() => setActivePanel(activePanel === "history" ? null : "history")}
+            className={`p-3 rounded-xl transition-all ${activePanel === "history" ? "bg-blue-500 text-white shadow-[0_0_15px_rgba(59,130,246,0.4)]" : "text-slate-400 hover:text-white hover:bg-white/[0.05]"}`}
+            title="Version History"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
           </button>
