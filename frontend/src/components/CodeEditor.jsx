@@ -3,6 +3,7 @@ import Editor from "@monaco-editor/react";
 import axios from "axios";
 import { AuthContext } from "../context/AuthContext";
 import AiActionPanel from "./AiActionPanel";
+import LivePreview from "./LivePreview";
 
 const CodeEditor = ({
   socket,
@@ -29,6 +30,11 @@ const CodeEditor = ({
   const [isCommitting, setIsCommitting] = useState(false);
   const lastCommittedCodeRef = useRef(initialCode || "");
   const typingTimeoutRef = useRef(null);
+  
+  const previewRef = useRef(null);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [isManualPreview, setIsManualPreview] = useState(false);
+  const [isHtmlLike, setIsHtmlLike] = useState(false);
 
   const runCode = async () => {
     if (!editorRef.current) return;
@@ -124,6 +130,14 @@ const CodeEditor = ({
   const handleEditorChange = (value) => {
     if (!socket || !roomId) return;
     
+    const lowerVal = value.toLowerCase();
+    const htmlLike = lowerVal.includes("<html") || lowerVal.includes("<head") || lowerVal.includes("<body") || lowerVal.includes("<style");
+    if (htmlLike !== isHtmlLike) setIsHtmlLike(htmlLike);
+    
+    if (isPreviewOpen && previewRef.current && !isManualPreview) {
+      previewRef.current.syncCode(value);
+    }
+    
     if (!isRemoteChange.current) {
       socket.emit("code-change", { roomId, code: value });
 
@@ -158,6 +172,13 @@ const CodeEditor = ({
       isRemoteChange.current = false;
       lastCommittedCodeRef.current = newCode;
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+
+      const htmlLike = newCode.toLowerCase().includes("<html") || newCode.toLowerCase().includes("<head") || newCode.toLowerCase().includes("<body") || newCode.toLowerCase().includes("<style");
+      if (htmlLike !== isHtmlLike) setIsHtmlLike(htmlLike);
+
+      if (isPreviewOpen && previewRef.current && !isManualPreview) {
+        previewRef.current.syncCode(newCode);
+      }
     };
 
     const onCursorUpdate = ({ socketId, username, color, lineNumber, column }) => {
@@ -284,6 +305,20 @@ const CodeEditor = ({
             Commit
           </button>
 
+          {(language === "html" || isHtmlLike || isPreviewOpen) && (
+            <button
+              onClick={() => setIsPreviewOpen(!isPreviewOpen)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold text-xs shadow-sm transition-all ${
+                isPreviewOpen 
+                  ? "bg-pink-500/20 border border-pink-500/40 text-pink-400 shadow-[0_0_15px_rgba(236,72,153,0.3)]" 
+                  : "bg-black/40 text-slate-400 border border-white/[0.08] hover:border-pink-500/30 hover:text-pink-400"
+              }`}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+              {isPreviewOpen ? "Close Preview" : "Live Preview"}
+            </button>
+          )}
+
           <div className="relative">
             <select
               value={language}
@@ -305,41 +340,54 @@ const CodeEditor = ({
       </div>
 
       <div className="flex-1 w-full h-full relative flex flex-col min-h-0">
-        <div className="flex-1 min-h-0 relative">
-          <Editor
-            height="100%"
-            width="100%"
-            language={language}
-            theme="vs-dark"
-            onMount={handleEditorDidMount}
-            onChange={handleEditorChange}
-            options={{
-              minimap: { enabled: false },
-              fontSize: 14,
-              fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-              lineHeight: 24,
-              padding: { top: 24 },
-              scrollBeyondLastLine: false,
-              smoothScrolling: true,
-              cursorBlinking: "smooth",
-              cursorSmoothCaretAnimation: "on",
-              formatOnPaste: true,
-              contextmenu: true,
-              scrollbar: {
-                verticalScrollbarSize: 8,
-                horizontalScrollbarSize: 8,
-              },
-            }}
-            loading={
-              <div className="absolute inset-0 flex flex-col gap-4 items-center justify-center bg-transparent text-slate-400">
-                <div className="relative w-10 h-10 flex items-center justify-center">
-                  <div className="absolute inset-0 rounded-full border-t-2 border-indigo-500 animate-spin"></div>
-                  <div className="absolute inset-1.5 rounded-full border-t-2 border-purple-500 animate-[spin_1.5s_linear_infinite_reverse]"></div>
+        <div className="flex flex-1 min-h-0 w-full overflow-hidden relative">
+          <div className="flex flex-1 min-w-0 relative h-full">
+            <Editor
+              height="100%"
+              width="100%"
+              language={language}
+              theme="vs-dark"
+              onMount={handleEditorDidMount}
+              onChange={handleEditorChange}
+              options={{
+                minimap: { enabled: false },
+                fontSize: 14,
+                fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+                lineHeight: 24,
+                padding: { top: 24 },
+                scrollBeyondLastLine: false,
+                smoothScrolling: true,
+                cursorBlinking: "smooth",
+                cursorSmoothCaretAnimation: "on",
+                formatOnPaste: true,
+                contextmenu: true,
+                scrollbar: {
+                  verticalScrollbarSize: 8,
+                  horizontalScrollbarSize: 8,
+                },
+              }}
+              loading={
+                <div className="absolute inset-0 flex flex-col gap-4 items-center justify-center bg-transparent text-slate-400">
+                  <div className="relative w-10 h-10 flex items-center justify-center">
+                    <div className="absolute inset-0 rounded-full border-t-2 border-indigo-500 animate-spin"></div>
+                    <div className="absolute inset-1.5 rounded-full border-t-2 border-purple-500 animate-[spin_1.5s_linear_infinite_reverse]"></div>
+                  </div>
+                  <p className="text-sm font-medium tracking-wide">Initializing Editor...</p>
                 </div>
-                <p className="text-sm font-medium tracking-wide">Initializing Editor...</p>
-              </div>
-            }
-          />
+              }
+            />
+          </div>
+          
+          {isPreviewOpen && (
+            <div className={`transition-all duration-300 ease-in-out h-full flex flex-col min-w-0 ${isPreviewOpen ? 'w-1/2 flex-none' : 'w-0'}`}>
+              <LivePreview 
+                ref={previewRef}
+                initialCode={editorRef.current?.getValue() || initialCode}
+                isManual={isManualPreview}
+                onToggleMode={() => setIsManualPreview(!isManualPreview)}
+              />
+            </div>
+          )}
         </div>
 
         {/* Output Terminal */}

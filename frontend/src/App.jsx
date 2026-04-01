@@ -7,6 +7,7 @@ import LoginPage from "./pages/LoginPage";
 import SignupPage from "./pages/SignupPage";
 import UpgradePage from "./pages/UpgradePage";
 import PaymentSuccess from "./pages/PaymentSuccess";
+import MultiFileEditor from "./components/MultiFileEditor";
 
 const ProtectedRoute = ({ children }) => {
   const { token, loading } = useContext(AuthContext);
@@ -59,6 +60,7 @@ const App = () => {
               </ProtectedRoute>
             } 
           />
+          <Route path="/playground" element={<MultiFileEditor />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>
